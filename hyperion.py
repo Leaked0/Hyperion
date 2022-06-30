@@ -372,9 +372,8 @@ except:
         self.gen = gen = []
         content = self.content
 
-        for _ in range(24):
+        for _ in range(25):
             self._gen_var()
-
 
         compressed = self._split_content(self.compressed, n = 2500)
 
@@ -382,7 +381,40 @@ except:
         vars = [f"{self._rand_pass()}{' ' * 250};{gen[0]}.{gen[19]}({gen[21]}='{a}',{gen[22]}={b})" for a, b in bvars.items()]
         vars = '\n\n'.join(' ' * 8 + var for var in vars)
 
+        actions = ('!=', 'is', '==', '<', '>', '>=', '<=')
+        keys = ('',)
+        ext = ('((var1, var2) for var2 in var3)', 'var1 if action else action2', '((var2, var1) for var2 in var3 if action)', '(var1 or var2 if var1 and var2 else ... or (var2, var1))')
+        generate = lambda: [
+            '{%s: %s}' % (tuple(
+                choice(
+                    [repr(self._randvar2()), *gen[11:17]]
+                ) for _ in range(2)
+            )),
+            ('(' + ', '.join(f'var{num + 1}' for num in range(randint(2, 3))) + ')').replace(
+                'var1', choice(gen[11:17])
+            ).replace(
+                'var2', choice(gen[11:17])
+            ).replace(
+                'var3', choice(gen[11:17])
+            ).replace(
+                'var4', choice(gen[11:17])
+            )
+        ]
+
+        gen2 = generate()
+
+        for _ in range(int((20 / 2) - 1)):
+            gen2.extend(generate())
+
+
+        rands = [
+            '\n' + (' ' * (4 * 2)) + 'try:\n' +  '    ' * 3 + self._rand_gen(ext, keys, gen, gen2, actions) + '\n\n' + (' ' * (4 * 2)) + f'except {self._rand_error()}:\n' + '    ' * 3 + self._rand_gen(ext, keys, gen, gen2, actions) + '\n\n' + (' ' * (4 * 2)) + f'except:\n' + '    ' * 3 + f"{gen[24]}({self._rand_int()} {self._rand_op()} {self._rand_int()}) == {self._rand_type()}"
+            for _ in range(4)
+        ]
+
         randomvars = '+'.join(f"{gen[0]}.{gen[18]}({gen[20]}='{var}')" for var in bvars)
+        sourcery = "# sourcery skip: collection-to-bool, remove-redundant-boolean, remove-redundant-except-handler"
+
 
         self.content = f"""
 {content[0]}
@@ -398,7 +430,7 @@ __license__ = 'EPL-2.0'
 __code__ = 'print("Hello world!")'
 
 
-{gen[11]}, {gen[12]}, {gen[13]}, {gen[14]}, {gen[15]}, {gen[17]} = exec, str, tuple, map, ord, globals
+{gen[11]}, {gen[12]}, {gen[13]}, {gen[14]}, {gen[15]}, {gen[17]}, {gen[24]} = exec, str, tuple, map, ord, globals, type
 
 class {gen[0]}:
     def __init__(self, {gen[4]}):
@@ -406,17 +438,23 @@ class {gen[0]}:
         self.{gen[1]}({gen[6]}={self._rand_int()})
 
     def {gen[1]}(self, {gen[6]} = {self._rand_type()}):
+        {sourcery}
         self.{gen[3]} {self._rand_op()}= {self._rand_int()} {self._rand_op()} {gen[6]}
+        {rands[0]}
 
     def {gen[2]}(self, {gen[7]} = {self._rand_int()}):
+        {sourcery}
         {gen[7]} {self._rand_op()}= {self._rand_int()} {self._rand_op()} {self._rand_int()}
         self.{gen[8]} != {self._rand_type()}
+        {rands[1]}
 
     def {gen[18]}({gen[20]} = {self._rand_type()}):
         return {gen[17]}()[{gen[20]}]
 
     def {gen[19]}({gen[21]} = {self._rand_int()} {self._rand_op()} {self._rand_int()}, {gen[22]} = {self._rand_type()}, {gen[23]} = {gen[17]}):
+        {sourcery}
         {gen[23]}()[{gen[21]}] = {gen[22]}
+        {rands[2]}
 
     def execute(code = str):
         return {gen[11]}({gen[12]}({gen[13]}({gen[14]}({gen[15]}, code))))
@@ -430,12 +468,16 @@ if __name__ == '__main__':
     try:
         {gen[0]}.execute(code = __code__)
         {gen[10]} = {gen[0]}({gen[4]} = {self._rand_int()} {self._rand_op()} {self._rand_int()})
+
 {vars}
+
         {self._rand_pass()}{' ' * 250};{content[1]}
         {self._rand_pass()}{' ' * 250};{content[2].replace("RANDOMVARS", randomvars)}
+
     except Exception as {gen[16]}:
         if {self._rand_bool(False)}:
             {gen[0]}.execute(code = {gen[12]}({gen[16]}))
+
         elif {self._rand_bool(False)}:
             {self._rand_pass(line = False)}
 """.strip()
@@ -473,6 +515,9 @@ if __name__ == '__main__':
             ''.join(choice(('J','I','L')) for _ in range(randint(17, 25))),
             ''.join(choice(('j','i','l')) for _ in range(randint(17, 25)))
         ))
+    
+    def _randvar2(self):
+        return ''.join(choice('billythegoat356BlueRed') for _ in range(randint(5, 20)))
 
     def _randglob(self):
         return choice((
@@ -804,26 +849,49 @@ if {self._rand_bool(False)}:
             content = content[n:]
         return ncontent
 
+    def _rand_gen(self, ext, keys, gen, gen2, actions):
+        return ' '.join([
+                choice(keys),
+                choice(
+                ext
+                ).replace('action2', ' '.join([gen2[randint(11, 17)], choice(actions), gen[randint(11, 17)]])).replace(
+                    'var1', gen2[randint(11, 17)]
+                ).replace(
+                    'var2', choice(gen[11:17])
+                ).replace(
+                    'var3', gen2[randint(11, 17)]
+                ).replace('action', ' '.join([gen[randint(11, 17)], choice(actions), gen[randint(11, 17)]])).replace(
+                    'var1', gen2[randint(11, 17)]
+                ).replace(
+                    'var2', gen2[randint(11, 17)]
+                ).replace(
+                    'var3', gen2[randint(11, 17)]
+                )
+            ]).strip()
+    
+    def _rand_error(self):
+        return choice((
+            'OSError',
+            'TypeError',
+            'ArithmeticError',
+            'AssertionError',
+            'AttributeError'
+        ))
+
     @property
     def _gen_vars(self):
         gen = [
-            'Math',
-            'Calculate',
-            'Hypothesis',
-            'Theory',
-            'Statistics',
-            'Random',
-            'Divide',
-            'Product',
-            'CallFunction',
-            'MemoryAccess',
-            'StackOverflow',
-            'System',
-            'Algorithm',
-            'Run',
-            'Builtins',
-            'Frame',
-            'DetectVar'
+            'MemoryAccess', 'StackOverflow', 'System',
+            'Divide', 'Product', 'CallFunction',
+            'Math', 'Calculate', 'Hypothesis',
+            'Frame', 'DetectVar', 'Substract',
+            'Theory', 'Statistics', 'Random',
+            'Round', 'Absolute', 'Negative',
+            'Algorithm', 'Run', 'Builtins',
+            'Positive', 'Invert', 'Square',
+            'Add', 'Multiply', 'Modulo',
+            'Power', 'Floor', 'Ceil',
+            'Cube', 'Walk', 'While',
         ]
         _gen = list(gen)
         gen.extend(f'_{g.lower()}' for g in _gen)
